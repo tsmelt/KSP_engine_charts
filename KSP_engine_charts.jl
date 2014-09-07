@@ -6,25 +6,21 @@ if Pkg.installed("Winston") == nothing
     Pkg.add("Winston")
 end
 using Winston
-if isdefined(Winston, :figure)
-    # Need Winston from master via Pkg.checkout("Winston"),
-    # otherwise default plot size is a bad aspect ratio
-    figure(width=800, height=500)
-end
 
-function KSP_engine_charts(mintwr=0., atmpressure=0., filename="")
+function KSP_engine_charts(mintwr=0., atmpressure=0., filename="", payload_range=[0.01 1000], deltav_range=[0 8000], max_num_engines=Inf)
 # Plot mass-optimal engine type vs delta-V and payload mass,
 # for a given minimum Kerbin-relative TWR (default 0) and
 # atmospheric pressure (in atm, default 0). Third input is
-# optional filename to save chart.
+# optional filename to save chart. Optionally, select min and
+# max payloads (in t, default [0.01 1000]), min and max delta-v
+# (in m/s, default [0 8000]), and max number of engines (default Inf).
 
 # Parameters - if you change these or anything else,
 # remember to re-run include("KSP_engine_charts.jl")
-max_num_engines = Inf # set to Inf for no constraint
 g0_isp = 9.82 # m/s^2
 g0_twr = 9.81 # m/s^2
-payload_points = logspace(log10(0.01), log10(1000), 501) # payloads to sample (t)
-deltav_points = linspace(0, 8000, 1001) # delta-v points to sample (m/s)
+payload_points = logspace(log10(payload_range[1]), log10(payload_range[2]), 501) # payloads to sample (t)
+deltav_points = linspace(deltav_range[1], deltav_range[2], 1001) # delta-v points to sample (m/s)
 
 # helper function to convert comma separated string to DataFrame
 str2df(s) = readtable(IOBuffer(replace(replace(s, " ", ""), "_", " ")))
@@ -350,6 +346,12 @@ for k=kmax + (1:size(XenonEngines,1))
     end
 end
 kmax += size(XenonEngines,1)
+
+if isdefined(Winston, :figure)
+    # Need Winston from master via Pkg.checkout("Winston"),
+    # otherwise default plot size is a bad aspect ratio
+    figure(width=800, height=500)
+end
 
 colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
 t = Table(1, 2)
