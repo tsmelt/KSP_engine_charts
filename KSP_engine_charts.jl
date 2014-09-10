@@ -6,6 +6,12 @@ if Pkg.installed("Winston") == nothing
     Pkg.add("Winston")
 end
 using Winston
+if Pkg.installed("Images") == nothing
+    Pkg.add("Images")
+end
+using Images
+
+import Base.convert
 
 function KSP_engine_charts(mintwr=0., atmpressure=0., filename="", payload_range=[0.01 1000], deltav_range=[0 8000], max_num_engines=Inf)
 # Plot mass-optimal engine type vs delta-V and payload mass,
@@ -33,7 +39,7 @@ LiquidEngines = str2df(
     "LV-909,    0.50,    50.,   300.,   390. \n" *
     # uncomment the suboptimal engines if you
     # impose a max_num_engines constraint
-    #"Mark 55,   0.90,   120.,   290.,   320. \n" *
+    #"Mark_55,   0.90,   120.,   290.,   320. \n" *
     "LV-T30,    1.25,   215.,   320.,   370. \n" *
     #"LV-T45,    1.50,   200.,   320.,   370. \n" *
     "Aerospike, 1.50,   175.,   388.,   390. \n" *
@@ -347,49 +353,97 @@ for k=kmax + (1:size(XenonEngines,1))
 end
 kmax += size(XenonEngines,1)
 
-if isdefined(Winston, :figure)
-    # Need Winston from master via Pkg.checkout("Winston"),
-    # otherwise default plot size is a bad aspect ratio
-    figure(width=800, height=500)
-end
-
 colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
-t = Table(1, 2)
-setattr(t, cellspacing=-65.0)
-t[1,1] = imagesc(extrema(deltav_points), reverse(extrema(payload_points)),
+chart = imagesc(extrema(deltav_points), reverse(extrema(payload_points)),
     bestengine, (0, kmax))
-setattr(t[1,1], ylog=true)
-setattr(t[1,1], title="Mass optimal engine type with min Kerbin relative TWR of $mintwr")
-setattr(t[1,1], title_style=[:fontsize=>2.0])
-ylabel("Payload mass (t)")
+setattr(chart, ylog=true)
+setattr(chart, title="Mass optimal engine type with min Kerbin relative TWR of $mintwr")
+setattr(chart, title_style=[:fontsize=>2.0])
+setattr(chart.y1, label="Payload mass (t)")
 if atmpressure <= 0
-    xlabel("Vacuum Delta V (m/s)")
+    setattr(chart.x1, label="Vacuum Delta V (m/s)")
 elseif atmpressure >= 1
-    xlabel("Atmospheric Delta V (m/s)")
+    setattr(chart.x1, label="Atmospheric Delta V (m/s)")
 else
-    xlabel("Delta V (m/s) at Pressure = $atmpressure atm")
+    setattr(chart.x1, label="Delta V (m/s) at Pressure = $atmpressure atm")
 end
-setattr(t[1,1].x1, draw_grid=true)
-setattr(t[1,1].x1, label_style=[:fontsize=>2.0])
-setattr(t[1,1].x1, ticklabels_style=[:fontsize=>2.0])
-setattr(t[1,1].y1, draw_grid=true)
-setattr(t[1,1].y1, label_style=[:fontsize=>2.0])
-setattr(t[1,1].y1, ticklabels_style=[:fontsize=>2.0])
-t2 = Table(1,5)
-t[1,2] = t2
-cdata = round(linspace(0.5, kmax+0.5, (kmax+1)*20 + 1))
-t2[1,5] = imagesc((1, 2), (kmax+0.5, 0.5), [cdata cdata], (0, kmax))
-setattr(t2[1,5], aspect_ratio=15.0)
-setattr(t2[1,5], draw_ticks=false)
-setattr(t2[1,5].x1, draw_ticklabels=false)
-setattr(t2[1,5].y1, draw_ticklabels=false)
-setattr(t2[1,5].y2, draw_ticklabels=true)
-setattr(t2[1,5].y2, ticks=1.0:kmax)
-setattr(t2[1,5].y2, ticklabels=array(nameslist))
+setattr(chart.x1, draw_grid=true)
+setattr(chart.x1, label_style=[:fontsize=>2.0])
+setattr(chart.x1, ticklabels_style=[:fontsize=>2.0])
+setattr(chart.y1, draw_grid=true)
+setattr(chart.y1, label_style=[:fontsize=>2.0])
+setattr(chart.y1, ticklabels_style=[:fontsize=>2.0])
+
+imagelegend = Table(kmax,1)
+for i=1:kmax
+    imagelegend[i,1] = plotimage(padimage(convert(Winston.Image, imread("img/" * nameslist[kmax+1-i] * ".png")), 60, 60))
+    setattr(imagelegend[i,1], draw_ticks=false)
+    setattr(imagelegend[i,1].x, draw_axis=false)
+    setattr(imagelegend[i,1].y, draw_axis=false)
+    setattr(imagelegend[i,1].x, draw_ticklabels=false)
+    setattr(imagelegend[i,1].y, draw_ticklabels=false)
+end
+setattr(imagelegend, cellspacing=0.0)
+
+colorlegend = imagesc((1, 2), (kmax+0.5, 0.5), [1:kmax 1:kmax], (0, kmax))
+setattr(colorlegend, draw_ticks=false)
+setattr(colorlegend.x1, draw_ticklabels=false)
+setattr(colorlegend.y1, draw_ticklabels=false)
+setattr(colorlegend.y2, draw_ticklabels=true)
+setattr(colorlegend.y2, ticks=1.0:kmax)
+setattr(colorlegend.y2, ticklabels=array(nameslist))
+
+legend = Table(1,2)
+setattr(legend, cellspacing=0.0)
+setattr(legend, align_interiors=true)
+setattr(legend, aspect_ratio=kmax/2)
+legend[1,1] = imagelegend
+legend[1,2] = colorlegend
+
+t = Table(1,2)
+setattr(t, cellspacing=-55.0)
+t[1,1] = chart
+t[1,2] = Table(1,4)
+t[1,2][1,4] = legend
+
+figure(width=800, height=500)
 display(t)
 if ! isempty(filename)
     savefig(t, filename, width=1300, height=750)
 end
 
 (bestengine, bestmass)
+end
+
+# Image manipulation helper functions
+
+# Convert ARGB Images.Image to Winston.Image
+function convert(::Type{Winston.Image}, img::Images.Image)
+    if colorspace(img) == "ARGB"
+        img_array = convert(Array, img)
+        a = img_array[:,:,1] / 0xff
+        r,g,b = [uint32((1-a)*0xff + a.*img_array[:,:,i]) for i=2:4]
+        img_out = map(v->(v<<16), r) + map(v->(v<<8), g) + b
+        width = size(img_out,2)
+        height = size(img_out,1)
+        Winston.Image((0,width), (height,0), flipud(img_out))
+    end
+end
+
+# Resize an image by padding it with whitespace
+function padimage(img::Winston.Image, width, height)
+    if width >= img.w && height >= img.h
+        x = int((width-img.w)/2)
+        y = int((height-img.h)/2)
+        img_out = fill(uint32(0x00ffffff), height, width)
+        img_out[1+y:img.h+y, 1+x:img.w+x] = img.img
+        Winston.Image((0,width), (height,0), img_out)
+    end
+end
+
+# Add an image to a plot
+function plotimage(img::Winston.Image)
+    p = Winston.ghf()
+    Winston.add(p, img)
+    Winston.ghf(p)
 end
