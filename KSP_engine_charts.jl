@@ -95,6 +95,19 @@ XenonTanks = str2df(
     PB-X50R,    0.03,     0.04
     PB-X150,    0.05,     0.07")
 
+MonopropEngines = str2df(
+    "name,      mass, thrust, ispatm, ispvac \n" *
+    "RV-105,    0.00,     1.,   100.,   260.") # PhysicsSignificance = 1
+# Place-Anywhere 7 Linear RCS Port is equivalent to RV-105
+
+MonopropTanks = str2df(
+    "name,          drymass, propmass
+    FL-R10,            0.05,      0.2
+    Stratus-V-Rnd,    0.075,     0.16
+    FL-R1,              0.4,       3.")
+    # FL-R25,            0.15,      0.4 # Worse than 3x FL-R10
+    # Stratus-V-Cyl,     0.15,      0.6 # Equivalent to 3x FL-R10
+
 # Create an array of all combinations of tanks
 function smalltankcombs(tanks::DataFrame)
     # Find the tank with the best mass ratio
@@ -305,6 +318,10 @@ kmax += size(SolidBoosters,1)
 nameslist = [nameslist, XenonEngines[:name]]
 beststandardengine!(bestengine, bestmass, kmax, XenonEngines, XenonTanks)
 kmax += size(XenonEngines,1)
+
+nameslist = [nameslist, MonopropEngines[:name]]
+beststandardengine!(bestengine, bestmass, kmax, MonopropEngines, MonopropTanks)
+kmax += size(MonopropEngines,1)
 
 colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
 chart = imagesc(extrema(deltav_points), reverse(extrema(payload_points)),
