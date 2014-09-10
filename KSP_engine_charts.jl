@@ -91,24 +91,9 @@ XenonTanks = str2df(
     PB-X50R,    0.03,     0.04
     PB-X150,    0.05,     0.07")
 
-# Hard-code combinations of small fuel tanks, sorted by dry mass
-# These numbers depend on fuel tank stats
-tankarray = [0 0 0;
-             1 0 0;
-             0 1 0;
-             2 0 0;
-             1 1 0;
-             3 0 0;
-             0 2 0;
-             2 1 0;
-             4 0 0;
-             0 0 1] *
-            array(LiquidTanks[1:3, 2:3]) * [1 1; 0 1]
-dm_flt100 = LiquidTanks[:drymass][3]
-pm_flt100 = LiquidTanks[:propmass][3]
 # This function will be used later to determine the lowest-mass combination
 # of small fuel tanks that can provide a required amount of fuel
-function smalltankmass(tankarray, massratioj, rhs)
+function smalltankmass(tankarray::Matrix, massratioj, rhs)
     for i=1:size(tankarray,1)
         c = massratioj * tankarray[i, 1]
         if tankarray[i, 2] - c >= rhs
@@ -118,55 +103,82 @@ function smalltankmass(tankarray, massratioj, rhs)
     error("should never get here")
 end
 
-bestmass = fill(Inf, length(payload_points), length(deltav_points))
-bestengine = zeros(Int, length(payload_points), length(deltav_points))
-kmax = size(LiquidEngines,1)
-nameslist = LiquidEngines[:name]
-for k=1:kmax
-    enginemassk = LiquidEngines[:mass][k]
-    thrustk = LiquidEngines[:thrust][k]
-    # skip this engine if it cannot meet the twr requirement
-    (thrustk < enginemassk * g0_twr * mintwr) && continue
-    veffk = g0_isp * (clamp(atmpressure, 0, 1) * LiquidEngines[:ispatm][k] + 
-        clamp(1 - atmpressure, 0, 1) * LiquidEngines[:ispvac][k])
-    for j=1:length(deltav_points)
-        massratioj = exp(deltav_points[j] / veffk)
-        enginedenom = (pm_flt100 + dm_flt100) * thrustk - massratioj * (
-                    enginemassk*g0_twr*mintwr*pm_flt100 + dm_flt100*thrustk)
-        (enginedenom <= 0.) && continue
-        enginesperton = g0_twr * mintwr * pm_flt100 * massratioj / enginedenom
-        tankfactor = (massratioj - 1.) / (pm_flt100 + dm_flt100 * (1. - massratioj))
-        for i=1:length(payload_points)
-            payloadi = payload_points[i]
-            # best-case number of engines if both engines and fuel tanks were continuous
-            numengines = (mintwr == 0.) ? 1. : ceil(payloadi * enginesperton)
-            while numengines <= max_num_engines
-                # best-case continuous number of FL-T100 tanks,
-                # with number of engines rounded up to next integer
-                # round number of tanks down, then look at smaller types of tanks
-                numtanks_base = floor((enginemassk * numengines + payloadi) * tankfactor)
-                drymass_base = enginemassk*numengines + payloadi + numtanks_base*dm_flt100
-                wetmass_base = drymass_base + numtanks_base*pm_flt100
-                wetmass_actual = massratioj * drymass_base + 
-                    smalltankmass(tankarray, massratioj, massratioj * drymass_base - wetmass_base)
-                if wetmass_actual > bestmass[i,j]
-                    # have already found a better engine at this point
-                    break
-                elseif numengines * thrustk < g0_twr * mintwr * wetmass_actual
-                    # twr constraint is violated due to rounding of number of fuel tanks
-                    # try again with another engine added
-                    numengines += 1.
-                else
-                    # twr and dv constraints are satisfied, so we have found
-                    # the mass-optimal number of engines and fuel tanks
-                    bestmass[i,j] = wetmass_actual
-                    bestengine[i,j] = k
-                    break
+# Find the best standard (engines and tanks are separate) engine
+# Modifies bestengine and bestmass
+function beststandardengine!(bestengine::Matrix, bestmass::Matrix, kmax::Int, Engines::DataFrame, tankarray::Matrix)
+    dm_optimal = tankarray[end, 1]
+    pm_optimal = tankarray[end, 2] - dm_optimal
+
+    for k=kmax + (1:size(Engines,1))
+        enginemassk = Engines[:mass][k - kmax]
+        thrustk = Engines[:thrust][k - kmax]
+        # skip this engine if it cannot meet the twr requirement
+        (thrustk < enginemassk * g0_twr * mintwr) && continue
+        veffk = g0_isp * (clamp(atmpressure, 0, 1) * Engines[:ispatm][k - kmax] + 
+            clamp(1 - atmpressure, 0, 1) * Engines[:ispvac][k - kmax])
+        for j=1:length(deltav_points)
+            massratioj = exp(deltav_points[j] / veffk)
+            enginedenom = (pm_optimal + dm_optimal) * thrustk - massratioj * (
+                        enginemassk*g0_twr*mintwr*pm_optimal + dm_optimal*thrustk)
+            (enginedenom <= 0.) && continue
+            enginesperton = g0_twr * mintwr * pm_optimal * massratioj / enginedenom
+            tankfactor = (massratioj - 1.) / (pm_optimal + dm_optimal * (1. - massratioj))
+            for i=1:length(payload_points)
+                payloadi = payload_points[i]
+                # best-case number of engines if both engines and fuel tanks were continuous
+                numengines = (mintwr == 0.) ? 1. : ceil(payloadi * enginesperton)
+                while numengines <= max_num_engines
+                    # best-case continuous number of optimal tanks,
+                    # with number of engines rounded up to next integer
+                    # round number of tanks down, then look at smaller types of tanks
+                    numtanks_base = floor((enginemassk * numengines + payloadi) * tankfactor)
+                    drymass_base = enginemassk*numengines + payloadi + numtanks_base*dm_optimal
+                    wetmass_base = drymass_base + numtanks_base*pm_optimal
+                    wetmass_actual = massratioj * drymass_base + 
+                        smalltankmass(tankarray, massratioj, massratioj * drymass_base - wetmass_base)
+                    if wetmass_actual > bestmass[i,j]
+                        # have already found a better engine at this point
+                        break
+                    elseif numengines * thrustk < g0_twr * mintwr * wetmass_actual
+                        # twr constraint is violated due to rounding of number of fuel tanks
+                        # try again with another engine added
+                        numengines += 1.
+                    else
+                        # twr and dv constraints are satisfied, so we have found
+                        # the mass-optimal number of engines and fuel tanks
+                        bestmass[i,j] = wetmass_actual
+                        bestengine[i,j] = k
+                        break
+                    end
                 end
             end
         end
     end
 end
+
+bestmass = fill(Inf, length(payload_points), length(deltav_points))
+bestengine = zeros(Int, length(payload_points), length(deltav_points))
+kmax = 0
+
+# Hard-code combinations of small fuel tanks, sorted by dry mass
+# These numbers depend on fuel tank stats
+liquidarray = [0 0 0;
+               1 0 0;
+               0 1 0;
+               2 0 0;
+               1 1 0;
+               3 0 0;
+               0 2 0;
+               2 1 0;
+               4 0 0;
+               0 0 1] *
+               array(LiquidTanks[1:3, 2:3]) * [1 1; 0 1]
+dm_liquidopt = LiquidTanks[:drymass][3]
+pm_liquidopt = LiquidTanks[:propmass][3]
+
+nameslist = LiquidEngines[:name]
+beststandardengine!(bestengine, bestmass, kmax, LiquidEngines, liquidarray)
+kmax += size(LiquidEngines,1)
 
 nameslist = [nameslist, LiquidBoosters[:name]]
 for k=kmax + (1:size(LiquidBoosters,1))
@@ -181,26 +193,26 @@ for k=kmax + (1:size(LiquidBoosters,1))
         if mintwr == 0. || (massratioj - 1.) * c >= boosterpropk
             # dv constraint is more restrictive than twr constraint,
             # so use full boosters and additional fuel tanks
-            boosterdenom = massratioj * (g0_twr * mintwr * (boosterpropk * dm_flt100 -
-                boosterdryk * pm_flt100) - dm_flt100 * thrustk) + (dm_flt100 + pm_flt100) * thrustk
-            tankdenom = pm_flt100 + dm_flt100 * (1. - massratioj)
+            boosterdenom = massratioj * (g0_twr * mintwr * (boosterpropk * dm_liquidopt -
+                boosterdryk * pm_liquidopt) - dm_liquidopt * thrustk) + (dm_liquidopt + pm_liquidopt) * thrustk
+            tankdenom = pm_liquidopt + dm_liquidopt * (1. - massratioj)
             ((boosterdenom <= 0.) || (tankdenom <= 0.)) && continue
-            boostersperton = massratioj * g0_twr * mintwr * pm_flt100 / boosterdenom
+            boostersperton = massratioj * g0_twr * mintwr * pm_liquidopt / boosterdenom
             boosterfactor = boosterdryk * (massratioj - 1.) - boosterpropk
             for i=1:length(payload_points)
                 payloadi = payload_points[i]
                 # best-case number of boosters if both boosters and fuel tanks were continuous
                 numboosters = (mintwr == 0.) ? 1. : ceil(payloadi * boostersperton)
                 while numboosters <= max_num_engines
-                    # best-case continuous number of FL-T100 tanks,
+                    # best-case continuous number of optimal liquid tanks,
                     # with number of boosters rounded up to next integer
                     # round number of tanks down, then look at smaller types of tanks
                     numtanks_base = max(0., floor((numboosters * boosterfactor +
                         (massratioj - 1.) * payloadi) / tankdenom))
-                    drymass_base = boosterdryk*numboosters + payloadi + numtanks_base*dm_flt100
-                    wetmass_base = drymass_base + boosterpropk*numboosters + numtanks_base*pm_flt100
+                    drymass_base = boosterdryk*numboosters + payloadi + numtanks_base*dm_liquidopt
+                    wetmass_base = drymass_base + boosterpropk*numboosters + numtanks_base*pm_liquidopt
                     wetmass_actual = massratioj * drymass_base + 
-                        smalltankmass(tankarray, massratioj, massratioj * drymass_base - wetmass_base)
+                        smalltankmass(liquidarray, massratioj, massratioj * drymass_base - wetmass_base)
                     if wetmass_actual > bestmass[i,j]
                         # have already found a better engine at this point
                         break
@@ -290,67 +302,9 @@ xenonarray = [0 0;
               3 1;
               0 3] *
              array(XenonTanks[1:2, 2:3]) * [1 1; 0 1]
-# Made-up xenon tank equivalent to 3 PB-X150's, since that is the LCM of the dry masses
-dm_pbx450 = 3*XenonTanks[:drymass][2]
-pm_pbx450 = 3*XenonTanks[:propmass][2]
-# This function will be used later to determine the lowest-mass combination
-# of xenon tanks that can provide a required amount of propellant
-function smallxenonmass(xenonarray, massratioj, rhs)
-    for i=1:size(xenonarray,1)
-        c = massratioj * xenonarray[i, 1]
-        if xenonarray[i, 2] - c >= rhs
-            return c
-        end
-    end
-    error("should never get here")
-end
 
 nameslist = [nameslist, XenonEngines[:name]]
-for k=kmax + (1:size(XenonEngines,1))
-    enginemassk = XenonEngines[:mass][k - kmax]
-    thrustk = XenonEngines[:thrust][k - kmax]
-    # skip this engine if it cannot meet the twr requirement
-    (thrustk < enginemassk * g0_twr * mintwr) && continue
-    veffk = g0_isp * (clamp(atmpressure, 0, 1) * XenonEngines[:ispatm][k - kmax] + 
-        clamp(1 - atmpressure, 0, 1) * XenonEngines[:ispvac][k - kmax])
-    for j=1:length(deltav_points)
-        massratioj = exp(deltav_points[j] / veffk)
-        enginedenom = (pm_pbx450 + dm_pbx450) * thrustk - massratioj * (
-                    enginemassk*g0_twr*mintwr*pm_pbx450 + dm_pbx450*thrustk)
-        (enginedenom <= 0.) && continue
-        enginesperton = g0_twr * mintwr * pm_pbx450 * massratioj / enginedenom
-        tankfactor = (massratioj - 1.) / (pm_pbx450 + dm_pbx450 * (1. - massratioj))
-        for i=1:length(payload_points)
-            payloadi = payload_points[i]
-            # best-case number of engines if both engines and fuel tanks were continuous
-            numengines = (mintwr == 0.) ? 1. : ceil(payloadi * enginesperton)
-            while numengines <= max_num_engines
-                # best-case continuous number of "PB-X450" tanks,
-                # with number of engines rounded up to next integer
-                # round number of tanks down, then look at smaller types of tanks
-                numtanks_base = floor((enginemassk * numengines + payloadi) * tankfactor)
-                drymass_base = enginemassk*numengines + payloadi + numtanks_base*dm_pbx450
-                wetmass_base = drymass_base + numtanks_base*pm_pbx450
-                wetmass_actual = massratioj * drymass_base + 
-                    smallxenonmass(xenonarray, massratioj, massratioj * drymass_base - wetmass_base)
-                if wetmass_actual > bestmass[i,j]
-                    # have already found a better engine at this point
-                    break
-                elseif numengines * thrustk < g0_twr * mintwr * wetmass_actual
-                    # twr constraint is violated due to rounding of number of fuel tanks
-                    # try again with another engine added
-                    numengines += 1.
-                else
-                    # twr and dv constraints are satisfied, so we have found
-                    # the mass-optimal number of engines and fuel tanks
-                    bestmass[i,j] = wetmass_actual
-                    bestengine[i,j] = k
-                    break
-                end
-            end
-        end
-    end
-end
+beststandardengine!(bestengine, bestmass, kmax, XenonEngines, xenonarray)
 kmax += size(XenonEngines,1)
 
 colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
