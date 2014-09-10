@@ -10,6 +10,10 @@ if Pkg.installed("Images") == nothing
     Pkg.add("Images")
 end
 using Images
+if Pkg.installed("Iterators") == nothing
+    Pkg.add("Iterators")
+end
+using Iterators
 
 import Base.convert
 
@@ -91,6 +95,28 @@ XenonTanks = str2df(
     PB-X50R,    0.03,     0.04
     PB-X150,    0.05,     0.07")
 
+# Create an array of all combinations of tanks
+function smalltankcombs(tanks::DataFrame)
+    # Find the tank with the best mass ratio
+    besttank = indmax(tanks[:propmass] ./ tanks[:drymass])
+    # Calculate a power of 10 that will make all the dry masses integers
+    power10 = 10^maximum([length(split(rstrip(@sprintf("%f", drymass), '0'), '.')[2]) for drymass in tanks[:drymass]])
+    # Calculate the LCM of all the dry masses
+    lcmtanks = int(lcm(int(power10*tanks[:drymass])) ./ (power10*tanks[:drymass]))
+    # Create an array of all possible tank combinations
+    combs = collect(Iterators.product([0:i for i in lcmtanks]...))
+    tankcombs = Array(Int, size(combs,1), size(tanks,1))
+    for j=1:size(combs,1)
+        tankcombs[j,:] = [combs[j]...]'
+    end
+    # Calculate the dry and wet masses of these combinations
+    tankarray = tankcombs * [tanks[:drymass] tanks[:propmass]] * [1 1; 0 1]
+    # Sort by dry mass, then by wet mass
+    tankarray = sortrows(tankarray)
+    # Remove combinations with more dry mass than the LCM combination
+    tankarray = tankarray[1:indexin([lcmtanks[1]*tanks[:drymass][1]], tankarray[:,1])[1],:]
+end
+
 # This function will be used later to determine the lowest-mass combination
 # of small fuel tanks that can provide a required amount of fuel
 function smalltankmass(tankarray::Matrix, massratioj, rhs)
@@ -105,7 +131,8 @@ end
 
 # Find the best standard (engines and tanks are separate) engine
 # Modifies bestengine and bestmass
-function beststandardengine!(bestengine::Matrix, bestmass::Matrix, kmax::Int, Engines::DataFrame, tankarray::Matrix)
+function beststandardengine!(bestengine::Matrix, bestmass::Matrix, kmax::Int, Engines::DataFrame, Tanks::DataFrame)
+    tankarray = smalltankcombs(Tanks)
     dm_optimal = tankarray[end, 1]
     pm_optimal = tankarray[end, 2] - dm_optimal
 
@@ -160,24 +187,12 @@ bestmass = fill(Inf, length(payload_points), length(deltav_points))
 bestengine = zeros(Int, length(payload_points), length(deltav_points))
 kmax = 0
 
-# Hard-code combinations of small fuel tanks, sorted by dry mass
-# These numbers depend on fuel tank stats
-liquidarray = [0 0 0;
-               1 0 0;
-               0 1 0;
-               2 0 0;
-               1 1 0;
-               3 0 0;
-               0 2 0;
-               2 1 0;
-               4 0 0;
-               0 0 1] *
-               array(LiquidTanks[1:3, 2:3]) * [1 1; 0 1]
-dm_liquidopt = LiquidTanks[:drymass][3]
-pm_liquidopt = LiquidTanks[:propmass][3]
+liquidarray = smalltankcombs(LiquidTanks)
+dm_liquidopt = liquidarray[end, 1]
+pm_liquidopt = liquidarray[end, 2] - dm_liquidopt
 
 nameslist = LiquidEngines[:name]
-beststandardengine!(bestengine, bestmass, kmax, LiquidEngines, liquidarray)
+beststandardengine!(bestengine, bestmass, kmax, LiquidEngines, LiquidTanks)
 kmax += size(LiquidEngines,1)
 
 nameslist = [nameslist, LiquidBoosters[:name]]
@@ -287,24 +302,8 @@ for k=kmax + (1:size(SolidBoosters,1))
 end
 kmax += size(SolidBoosters,1)
 
-# Hard-code combinations of xenon tanks, sorted by dry mass
-# These numbers depend on xenon tank stats
-xenonarray = [0 0;
-              1 0;
-              0 1;
-              2 0;
-              1 1;
-              3 0;
-              0 2;
-              2 1;
-              4 0;
-              1 2;
-              3 1;
-              0 3] *
-             array(XenonTanks[1:2, 2:3]) * [1 1; 0 1]
-
 nameslist = [nameslist, XenonEngines[:name]]
-beststandardengine!(bestengine, bestmass, kmax, XenonEngines, xenonarray)
+beststandardengine!(bestengine, bestmass, kmax, XenonEngines, XenonTanks)
 kmax += size(XenonEngines,1)
 
 colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
