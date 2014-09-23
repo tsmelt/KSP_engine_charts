@@ -325,7 +325,7 @@ nameslist = [nameslist, MonopropEngines[:name]]
 beststandardengine!(bestengine, bestmass, kmax, MonopropEngines, MonopropTanks)
 kmax += size(MonopropEngines,1)
 
-colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25))])
+colormap([Color.RGB(1,1,1); Color.distinguishable_colors(kmax, Color.RGB(0.25,0.25,0.25), cchoices=linspace(10, 100, 15))])
 chart = imagesc(extrema(deltav_points), reverse(extrema(payload_points)),
     bestengine, (0, kmax))
 setattr(chart, ylog=true)
