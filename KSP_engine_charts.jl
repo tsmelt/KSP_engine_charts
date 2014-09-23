@@ -38,20 +38,21 @@ str2df(s) = readtable(IOBuffer(replace(replace(s, " ", ""), "_", " ")))
 LiquidEngines = str2df(
     "name,      mass, thrust, ispatm, ispvac \n" *
     "LV-1,      0.03,     4.,   220.,   290. \n" *
-    "24-77,     0.09,    20.,   250.,   300. \n" *
+    "Vernor,    0.00,    12.,   140.,   260. \n" * # PhysicsSignificance = 1
+    #"24-77,     0.09,    20.,   250.,   300. \n" *
     "48-7S,     0.10,    30.,   300.,   350. \n" *
     "LV-909,    0.50,    50.,   300.,   390. \n" *
     # uncomment the suboptimal engines if you
     # impose a max_num_engines constraint
     #"Mark_55,   0.90,   120.,   290.,   320. \n" *
+    #"Rapier,    1.20,   175.,   320.,   360. \n" *
     "LV-T30,    1.25,   215.,   320.,   370. \n" *
     #"LV-T45,    1.50,   200.,   320.,   370. \n" *
     "Aerospike, 1.50,   175.,   388.,   390. \n" *
-    #"Rapier,    1.75,   175.,   320.,   360. \n" *
+    "Poodle,    2.00,   220.,   270.,   390. \n" *
     "LV-N,      2.25,    60.,   220.,   800. \n" *
-    #"Poodle,    2.50,   220.,   270.,   390. \n" *
-    #"Skipper,   4.00,   650.,   300.,   350. \n" *
-    #"Mainsail,  6.00,  1500.,   280.,   330. \n" *
+    "Skipper,   3.00,   650.,   320.,   370. \n" *
+    "Mainsail,  6.00,  1500.,   320.,   360. \n" *
     "KR-2L,     6.50,  2500.,   280.,   380. \n" *
     "KS-25x4,   9.75,  3200.,   320.,   360.")
 
@@ -73,7 +74,7 @@ LiquidTanks = str2df(
 
 LiquidBoosters = str2df(
     "name,    drymass, propmass, thrust, ispatm, ispvac
-    LFB_KR-1x2,  10.0,     32.0,  2000.,   320.,   360.")
+    LFB_KR-1x2,  10.0,     32.0,  2000.,   290.,   340.")
 
 SolidBoosters = str2df(
     "name,     drymass, propmass, thrust, ispatm, ispvac \n" *
@@ -97,7 +98,8 @@ XenonTanks = str2df(
 
 MonopropEngines = str2df(
     "name,      mass, thrust, ispatm, ispvac \n" *
-    "RV-105,    0.00,     1.,   100.,   260.") # PhysicsSignificance = 1
+    #"RV-105,    0.00,     1.,   100.,   260.") # PhysicsSignificance = 1
+    "O-10,      0.00,    20.,   220.,   290.") # PhysicsSignificance = 1
 # Place-Anywhere 7 Linear RCS Port is equivalent to RV-105
 
 MonopropTanks = str2df(
